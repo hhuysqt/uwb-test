@@ -1,0 +1,4 @@
+loadbin build/test_m0.bin 0
+r
+g
+q
