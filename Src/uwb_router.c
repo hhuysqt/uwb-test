@@ -59,8 +59,6 @@ static void router_on_rx(dwDevice_t *dev) {
 
 	memset(&rxPacket, 0, MAC802154_HEADER_LENGTH);
 	dwGetData(dev, (uint8_t*)&rxPacket, dataLength);
-	dwGetReceiveTimestamp(dev, &arival);
-	arival.full -= (ANTENNA_DELAY / 2);
 
 	if (rxPacket.destAddress[0] != router_address) {
 		dwNewReceive(dev);
@@ -69,16 +67,13 @@ static void router_on_rx(dwDevice_t *dev) {
 		return;
 	}
 
-	memcpy(txPacket.destAddress, rxPacket.sourceAddress, 8);
-	memcpy(txPacket.sourceAddress, rxPacket.destAddress, 8);
 	switch(rxPacket.payload[PAYLOAD_TYPE]) {
 	case MSG_TO_ROUTER: {
 		// received a coordinate and print it through USART
 		char buff[100];
-		struct coordinate the_coo;
+		struct coordinate_mm the_coo;
 		memcpy(&the_coo, rxPacket.payload + 2, sizeof(the_coo));
-		int xmm = the_coo.x*1000, ymm = the_coo.y*1000, zmm = the_coo.z*1000;
-		sprintf(buff, "s:%5d,%5d,%5d\r\n", xmm,ymm,zmm);
+		sprintf(buff, "s:%5d,%5d,%5d\r\n", the_coo.x,the_coo.y,the_coo.z);
 		while (SendBuffStartDMA(buff, strlen(buff)) == SEND_RETRY);
 		break;
 	}

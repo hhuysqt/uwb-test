@@ -100,7 +100,7 @@ static void TagSendToRouter(dwDevice_t *dev, uint8_t my_addr, uint8_t router_add
 	dwSetDefaults(dev);
 	dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH + 2 + size);
 
-	dwWaitForResponse(dev, true);
+	dwWaitForResponse(dev, false);
 	dwStartTransmit(dev);
 
 	tag_timeout_cnt = 0;	
@@ -323,8 +323,13 @@ static void tag_on_period(dwDevice_t *dev)
 			is_get_reply = false;
 			anchor_focus++;
 			if (anchor_focus >= nr_anchors) {
+				struct coordinate_mm coomm;
 				PrintResult();
-				TagSendToRouter(dev, tag_address, DEFAULT_ROUTER_ADDR, &my_coordinate, sizeof(my_coordinate));
+				coomm.x = my_coordinate.x*1000;
+				coomm.y = my_coordinate.y*1000;
+				coomm.z = my_coordinate.z*1000;
+				TagSendToRouter(dev, tag_address, DEFAULT_ROUTER_ADDR, &coomm, sizeof(coomm));
+				HAL_Delay(10);
 				// The next round
 				anchor_focus = 0;
 			}

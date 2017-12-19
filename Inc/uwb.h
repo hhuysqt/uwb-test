@@ -17,6 +17,9 @@
 struct coordinate {
 	double x, y, z;
 };
+struct coordinate_mm {
+	uint16_t x, y, z;
+};
 
 /*
  * Different uwb mode
@@ -28,7 +31,7 @@ enum uwb_mode {
 	UWB_ENDMODE	// sentinel
 };
 
-#define DEFAULT_ROUTER_ADDR 0xff
+#define DEFAULT_ROUTER_ADDR 50
 
 /*
  * uwb callback functions
