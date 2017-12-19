@@ -118,6 +118,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 		SendBuffStartDMA(sendbuff, strlen(sendbuff));
 		SetMode(UWB_TAG);
 		break;
+	// Router mode
+	case 'R':
+		sprintf(sendbuff, "Set router mode\r\n");
+		SendBuffStartDMA(sendbuff, strlen(sendbuff));
+		SetMode(UWB_ROUTER);
+		break;
 
 	/*
 	 * Number of anchors.
@@ -139,6 +145,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 			"Set address   -- 0 ... 9, a ... z\r\n"
 			"Anchor mode   -- A\r\n"
 			"Tag    mode   -- T\r\n"
+			"Router mode   -- R\r\n"
 			"Nr of anchors -- Ctrl+A ... Ctrl+J\r\n";
 		SendBuffStartDMA((void*)helpmsg, strlen(helpmsg));
 		break;

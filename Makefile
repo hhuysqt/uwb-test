@@ -59,6 +59,7 @@ Src/eeprom.c \
 Src/uwb_core.c \
 Src/uwb_tag.c \
 Src/uwb_anchor.c \
+Src/uwb_router.c \
 Src/libdw1000.c \
 Src/libdw1000Spi.c \
 Src/dw_ops.c \
