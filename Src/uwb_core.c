@@ -75,7 +75,8 @@ static int LoadConfig(void)
 	              " %s mode\r\n"
 	              " %d anchors out there\r\n",
 	              config.address, 
-	              config.mode == UWB_ANCHOR ? "anchor" : "tag",
+	              config.mode == UWB_ANCHOR ? "anchor" : 
+	              config.mode == UWB_TAG ? "tag" : "router",
 	              config.nr_anchor);
 	SendBuffStartDMA(buff, strlen(buff));
 
@@ -93,6 +94,9 @@ static int SetCallbacks(dwDevice_t *the_uwb)
 		break;
 	case UWB_TAG:
 		curr_uwb_ops = &uwb_tag_ops;
+		break;
+	case UWB_ROUTER:
+		curr_uwb_ops = &uwb_router_ops;
 		break;
 	default:
 		return -1;
@@ -166,6 +170,8 @@ void SetAddress(uint8_t addr)
 void SetMode(uint8_t mode)
 {
 	config.mode = mode;
+	if (mode == UWB_ROUTER)
+		config.address = DEFAULT_ROUTER_ADDR;
 	config.checksum = CalcSum(&config);
 	eepromWrite(0, &config, sizeof(config));
 }

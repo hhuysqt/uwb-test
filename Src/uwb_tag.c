@@ -32,9 +32,6 @@ static int tag_timeout_cnt = 0;
  * Anchors automatically measure their distance on power-up.
  * Tags uses them to do the calculations
  */
-struct coordinate {
-	double x, y, z;
-};
 static struct coordinate anchor_coordinate[MAX_NR_ANCHORS] = { 0 };
 static bool is_get_reply = true;
 static int anchor_focus = -1;
@@ -82,6 +79,31 @@ static void TagSendInitiatePacket(dwDevice_t *dev, uint8_t my_addr, uint8_t type
 	dwStartTransmit(dev);
 
 	tag_timeout_cnt = 0;
+}
+
+static void TagSendToRouter(dwDevice_t *dev, uint8_t my_addr, uint8_t router_addr,
+	void *data, int size)
+{
+	uint8_t address_tmp[8] = {0,0,0,0,0,0,0xcf,0xbc};
+
+	dwIdle(dev);
+	txPacket.payload[PAYLOAD_TYPE] = MSG_TO_ROUTER;
+	address_tmp[0] = my_addr;
+	memcpy(txPacket.sourceAddress, address_tmp, 8);
+	address_tmp[0] = router_addr;
+	memcpy(txPacket.destAddress, address_tmp, 8);
+	if (size > 64)
+		size = 64;
+	memcpy(txPacket.payload + 2, data, size);
+
+	dwNewTransmit(dev);
+	dwSetDefaults(dev);
+	dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH + 2 + size);
+
+	dwWaitForResponse(dev, true);
+	dwStartTransmit(dev);
+
+	tag_timeout_cnt = 0;	
 }
 
 static void tag_init(uint8_t addr)
@@ -240,9 +262,9 @@ static void PrintResult(void)
 	double tmp = a*a - x*x - y*y;
 	if(tmp > 0)
 		z = sqrt(tmp);
-	my_coordinate.x = x;//LowPassFilter(x, my_coordinate.x);
-	my_coordinate.y = y;//LowPassFilter(y, my_coordinate.y);
-	my_coordinate.z = z;//LowPassFilter(z, my_coordinate.z);
+	my_coordinate.x = x;
+	my_coordinate.y = y;
+	my_coordinate.z = z;
 
 	char buff[100];
 	int xmm = 1000*x, ymm = 1000*y, zmm = 1000*z;
@@ -302,6 +324,7 @@ static void tag_on_period(dwDevice_t *dev)
 			anchor_focus++;
 			if (anchor_focus >= nr_anchors) {
 				PrintResult();
+				TagSendToRouter(dev, tag_address, DEFAULT_ROUTER_ADDR, &my_coordinate, sizeof(my_coordinate));
 				// The next round
 				anchor_focus = 0;
 			}
