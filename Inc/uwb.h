@@ -5,8 +5,6 @@
 #define MY_UWB_H_
 
 #include <dw_ops.h>
-#include <uwb_tag.h>
-#include <uwb_anchor.h>
 #include <led.h>
 #include <mac.h>
 
@@ -16,14 +14,21 @@
 #define NR_ANCHORS 3
 #define MAX_NR_ANCHORS 10
 
+struct coordinate {
+	double x, y, z;
+};
+
 /*
  * Different uwb mode
  */
 enum uwb_mode {
 	UWB_ANCHOR = 0,
 	UWB_TAG,
+	UWB_ROUTER,
 	UWB_ENDMODE	// sentinel
 };
+
+#define DEFAULT_ROUTER_ADDR 0xff
 
 /*
  * uwb callback functions
@@ -36,6 +41,9 @@ struct uwb_operation {
 	void (*on_failed)(dwDevice_t *dev);
 	void (*on_period)(dwDevice_t *dev);	// the upper loop periodically calls it
 };
+extern struct uwb_operation uwb_anchor_ops;
+extern struct uwb_operation uwb_tag_ops;
+extern struct uwb_operation uwb_router_ops;
 
 /*
  * Two-Way-Ranging data struct
@@ -48,6 +56,7 @@ enum twr_msg_type {
 	MSG_TWR_REPORT,
 	/* User specific messages */
 	MSG_INIT_ANCHOR_POS,	// Tag asks for anchor's position
+	MSG_TO_ROUTER,
 };
 
 enum twr_payload_index {
