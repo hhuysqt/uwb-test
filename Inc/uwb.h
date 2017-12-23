@@ -18,16 +18,19 @@ struct coordinate {
 	double x, y, z;
 };
 struct coordinate_mm {
-	uint16_t x, y, z;
+	int16_t x, y, z;
 };
 
 /*
  * Different uwb mode
  */
 enum uwb_mode {
-	UWB_ANCHOR = 0,
-	UWB_TAG,
-	UWB_ROUTER,
+	UWB_ANCHOR = 0,	// TOA anchor
+	UWB_TAG,	// TOA tag
+	UWB_TDOA_ANCHOR,// TDOA anchor
+	UWB_TDOA_TAG,	// TDOA tag
+
+	UWB_ROUTER,	// info tx/rx
 	UWB_ENDMODE	// sentinel
 };
 
@@ -46,28 +49,33 @@ struct uwb_operation {
 };
 extern struct uwb_operation uwb_anchor_ops;
 extern struct uwb_operation uwb_tag_ops;
+extern struct uwb_operation uwb_tdoa_anchor_ops;
+extern struct uwb_operation uwb_tdoa_tag_ops;
 extern struct uwb_operation uwb_router_ops;
 
 /*
  * Two-Way-Ranging data struct
  */
 enum twr_msg_type {
-	/* The normal twr messages */
+	/* The normal TWR-TOA messages */
 	MSG_TWR_POLL, 
 	MSG_TWR_ANSWER,
 	MSG_TWR_FINAL,
 	MSG_TWR_REPORT,
+	/* TDOA messages */
+	MSG_TDOA,
 	/* User specific messages */
 	MSG_INIT_ANCHOR_POS,	// Tag asks for anchor's position
-	MSG_TO_ROUTER,
+	MSG_TO_ROUTER,		// send info to the router
 };
 
-enum twr_payload_index {
+enum payload_index {
 	/*
 	 * to index the payload uint8_t array...
 	 */
 	PAYLOAD_TYPE = 0,
 	PAYLOAD_SEQUENCE,
+	PAYLOAD_INFO_START,
 };
 /*
  * The report data struct, from anchor to tag
@@ -96,6 +104,12 @@ struct twr_full_data {
 	dwTime_t final_tx;
 	dwTime_t final_rx;
 };
+
+/*
+ * TDOA: hyperbolic localization
+ * Tags calculate their coordinate only by listening to anchors' messages
+ * Anchors send their timestamps one by one.
+ */
 
 /*
  * Initializing the low level radio handling
