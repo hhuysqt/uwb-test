@@ -323,13 +323,18 @@ static void tag_on_period(dwDevice_t *dev)
 			is_get_reply = false;
 			anchor_focus++;
 			if (anchor_focus >= nr_anchors) {
-				struct coordinate_mm coomm;
+				static int cnt = 0;
 				PrintResult();
-				coomm.x = my_coordinate.x*1000;
-				coomm.y = my_coordinate.y*1000;
-				coomm.z = my_coordinate.z*1000;
-				TagSendToRouter(dev, tag_address, DEFAULT_ROUTER_ADDR, &coomm, sizeof(coomm));
-				HAL_Delay(10);
+				cnt++;
+				if (cnt > 5) {
+					struct coordinate_mm coomm;
+					cnt = 0;
+					coomm.x = my_coordinate.x*1000;
+					coomm.y = my_coordinate.y*1000;
+					coomm.z = my_coordinate.z*1000;
+					TagSendToRouter(dev, tag_address, DEFAULT_ROUTER_ADDR, &coomm, sizeof(coomm));
+					HAL_Delay(10);
+				}
 				// The next round
 				anchor_focus = 0;
 			}

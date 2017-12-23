@@ -84,6 +84,35 @@ static int LoadConfig(void)
 }
 
 /*
+ * default callbacks
+ */
+void default_on_tx(dwDevice_t *dev)
+{
+	(void)dev;
+}
+void default_on_rx(dwDevice_t *dev)
+{
+	(void)dev;
+}
+void default_on_failed(dwDevice_t *dev)
+{
+	LED_ON(1);
+	dwIdle(dev);
+	HAL_Delay(100);
+	dwNewReceive(dev);
+	dwSetDefaults(dev);
+	dwStartReceive(dev);
+}
+void default_on_timeout(dwDevice_t *dev)
+{
+	LED_ON(3);
+	dwIdle(dev);
+	HAL_Delay(100);
+	dwNewReceive(dev);
+	dwSetDefaults(dev);
+	dwStartReceive(dev);
+}
+/*
  * Set uwb callback according to config
  */
 static int SetCallbacks(dwDevice_t *the_uwb)
@@ -102,13 +131,18 @@ static int SetCallbacks(dwDevice_t *the_uwb)
 		return -1;
 	}
 	curr_uwb_ops->init(config.address);
-	dwAttachSentHandler          (the_uwb, curr_uwb_ops->on_tx);
-	dwAttachReceivedHandler      (the_uwb, curr_uwb_ops->on_rx);
-	dwAttachReceiveTimeoutHandler(the_uwb, curr_uwb_ops->on_timeout);
-	dwAttachReceiveFailedHandler (the_uwb, curr_uwb_ops->on_failed);
+	dwAttachSentHandler          (the_uwb, curr_uwb_ops->on_tx ?
+		curr_uwb_ops->on_tx : default_on_tx);
+	dwAttachReceivedHandler      (the_uwb, curr_uwb_ops->on_rx ?
+		curr_uwb_ops->on_rx : default_on_rx);
+	dwAttachReceiveTimeoutHandler(the_uwb, curr_uwb_ops->on_timeout ?
+		curr_uwb_ops->on_timeout : default_on_timeout);
+	dwAttachReceiveFailedHandler (the_uwb, curr_uwb_ops->on_failed ?
+		curr_uwb_ops->on_failed : default_on_failed);
 
 	return 0;
 }
+
 
 /*
  * Initializing the low level radio handling
