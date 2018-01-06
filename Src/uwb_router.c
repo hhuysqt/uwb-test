@@ -28,9 +28,9 @@ static int router_timeout_cnt = 0;
 static packet_t txPacket;
 static packet_t rxPacket;
 
-static void router_init(uint8_t addr)
+static void router_init(dwDevice_t *dev)
 {
-	(void)addr;
+	(void)dev;
 	// Initialize the packet in the TX buffer
 	MAC80215_PACKET_INIT(txPacket, MAC802154_TYPE_DATA);
 	txPacket.pan = 0xbccf;

@@ -80,9 +80,9 @@ static void AnchorSendInitiatePacket(dwDevice_t *dev, uint8_t my_addr)
 	anchor_timeout_cnt = 0;
 }
 
-static void anchor_init(uint8_t addr)
+static void anchor_init(dwDevice_t *dev)
 {
-	anchor_address = addr;
+	anchor_address = config.address;
 	anchor_current_state = ANCHOR_INIT;
 	// Initialize the packet in the TX buffer
 	MAC80215_PACKET_INIT(txPacket, MAC802154_TYPE_DATA);

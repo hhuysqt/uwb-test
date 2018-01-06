@@ -47,16 +47,6 @@ static packet_t txPacket;
 static packet_t rxPacket;
 
 /*
- * First order RC low pass filter
- * Cutoff frequency is very low...
- */
-static double LowPassFilter(double input, double last_output)
-{
-#  define RCFILTER_PARAM 0.1
-	return RCFILTER_PARAM*input + (1 - RCFILTER_PARAM)*last_output;
-}
-
-/*
  * Tag send an initiate packet, to trigger a twr measurement, or 
  * ask for information, depending on @type.
  */
@@ -106,9 +96,9 @@ static void TagSendToRouter(dwDevice_t *dev, uint8_t my_addr, uint8_t router_add
 	tag_timeout_cnt = 0;	
 }
 
-static void tag_init(uint8_t addr)
+static void tag_init(dwDevice_t *dev)
 {
-	tag_address = addr;
+	tag_address = config.address;
 	tag_current_state = TAG_INIT;
 	anchor_focus = -1;
 	// Initialize the packet in the TX buffer

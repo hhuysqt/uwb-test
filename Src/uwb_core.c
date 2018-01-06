@@ -16,18 +16,30 @@ static dwDevice_t dwm_dev;
  *  magic number: 0xabcd
  */
 #define MAGIC_NUMBER 0xabcd
-static struct uwb_config {
-	unsigned short magic;
-	unsigned char mode;
-	unsigned char address;
-	unsigned char nr_anchor;
-	unsigned char checksum;
-} __attribute__((packed)) config;
+struct uwb_config config;
 
 /*
  * default: anchor
  */
 static struct uwb_operation *curr_uwb_ops = &uwb_anchor_ops;
+
+void mydelay(int n)
+{
+	while(n--){
+		volatile int cnt = 8000;
+		while(cnt--);
+	}
+}
+
+/*
+ * First order RC low pass filter
+ * Cutoff frequency is about 1Hz...
+ */
+double LowPassFilter(double input, double last_output)
+{
+#  define RCFILTER_PARAM 0.03
+	return RCFILTER_PARAM*input + (1 - RCFILTER_PARAM)*last_output;
+}
 
 /*
  * Check config
@@ -76,7 +88,10 @@ static int LoadConfig(void)
 	              " %d anchors out there\r\n",
 	              config.address, 
 	              config.mode == UWB_ANCHOR ? "anchor" : 
-	              config.mode == UWB_TAG ? "tag" : "router",
+	              config.mode == UWB_TAG ? "tag" : 
+	              config.mode == UWB_TDOA_ANCHOR ? "tdoa anchor" :
+	              config.mode == UWB_TDOA_TAG ? "tdoa tag" :
+	              "router",
 	              config.nr_anchor);
 	SendBuffStartDMA(buff, strlen(buff));
 
@@ -98,7 +113,7 @@ void default_on_failed(dwDevice_t *dev)
 {
 	LED_ON(1);
 	dwIdle(dev);
-	HAL_Delay(100);
+	mydelay(100);
 	dwNewReceive(dev);
 	dwSetDefaults(dev);
 	dwStartReceive(dev);
@@ -107,7 +122,7 @@ void default_on_timeout(dwDevice_t *dev)
 {
 	LED_ON(3);
 	dwIdle(dev);
-	HAL_Delay(100);
+	mydelay(100);
 	dwNewReceive(dev);
 	dwSetDefaults(dev);
 	dwStartReceive(dev);
@@ -124,13 +139,19 @@ static int SetCallbacks(dwDevice_t *the_uwb)
 	case UWB_TAG:
 		curr_uwb_ops = &uwb_tag_ops;
 		break;
+	case UWB_TDOA_ANCHOR:
+		curr_uwb_ops = &uwb_tdoa_anchor_ops;
+		break;
+	case UWB_TDOA_TAG:
+		curr_uwb_ops = &uwb_tdoa_tag_ops;
+		break;
 	case UWB_ROUTER:
 		curr_uwb_ops = &uwb_router_ops;
 		break;
 	default:
 		return -1;
 	}
-	curr_uwb_ops->init(config.address);
+	curr_uwb_ops->init(the_uwb);
 	dwAttachSentHandler          (the_uwb, curr_uwb_ops->on_tx ?
 		curr_uwb_ops->on_tx : default_on_tx);
 	dwAttachReceivedHandler      (the_uwb, curr_uwb_ops->on_rx ?

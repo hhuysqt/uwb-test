@@ -12,23 +12,25 @@
 #include <stdio.h>
 #include <string.h>
 
+#define ANTENNA_OFFSET 154.6   // In meter
+#define ANTENNA_DELAY  (ANTENNA_OFFSET*499.2e6*128)/299792458.0 // In radio tick
 /*
  * Timestamps to send
  * Suppose n is the ID to this anchor;
  *  index n: the time it broadcast the last message
  *  others : the time it receive message from other corresponding anchors
  **/
-static dwTime_t timestamps[MAX_NR_ANCHORS];
+static uint32_t timestamps[MAX_NR_ANCHORS];
 static int anchors_in_used = NR_ANCHORS;
 static int my_id = 0;
 /*
- * anchor timer
  *  Maintain a counter to dianose send/receive timeout
  *  The cnt is increased only in on_period(), and is resetted in on_tx()/on_rx()
  *  and some other places...
  */
-#  define TDOA_ANCHOR_LOOP_TIMEOUT 2
+#  define TDOA_ANCHOR_LOOP_TIMEOUT 10
 static int timeout_cnt = 0;
+static int error_cnt = 0;
 
 /*
  * Global temporary packet
@@ -41,25 +43,27 @@ static packet_t rxPacket;
  */
 static void broadcast_my_timestamps(dwDevice_t *dev)
 {
+	mydelay(1);
 	txPacket.sourceAddress[0] = my_id;
 	txPacket.payload[PAYLOAD_TYPE] = MSG_TDOA;
-	// only 40-bits in-used in dwTime_t
-	for (int i = 0; i < anchors_in_used; i++)
-		memcpy(&txPacket.payload[2 + i*5], &timestamps[i], 5);
+	// only the low 32-bits in-used in dwTime_t
+	memcpy(&txPacket.payload[2], timestamps, 4*anchors_in_used);
 
 	dwNewTransmit(dev);
 	dwSetDefaults(dev);
 	dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH + 2 +
-			5*anchors_in_used);
+			4*anchors_in_used);
 
 	dwWaitForResponse(dev, true);
 	dwStartTransmit(dev);
+	LED_TUGGLE(3);
 }
 
-static void tdoa_anchor_init(uint8_t addr)
+static void tdoa_anchor_init(dwDevice_t *dev)
 {
-	my_id = addr;
+	my_id = config.address;
 	MAC80215_PACKET_INIT(txPacket, MAC802154_TYPE_DATA);
+	anchors_in_used = config.nr_anchor;
 	txPacket.pan = 0xbccf;
 }
 
@@ -69,31 +73,37 @@ static void tdoa_anchor_init(uint8_t addr)
 static void tdoa_anchor_on_tx(dwDevice_t *dev)
 {
 	timeout_cnt = 0;
+	error_cnt = 0;
 
 	dwTime_t departure;
 	dwGetTransmitTimestamp(dev, &departure);
 	departure.full += (ANTENNA_DELAY / 2);
-	timestamps[my_id] = departure;
+	timestamps[my_id] = departure.low32;
 }
 
 static void tdoa_anchor_on_rx(dwDevice_t *dev)
 {
 	timeout_cnt = 0;
 
-	dwTime_t arival = { .full=0 };
 	int dataLength = dwGetDataLength(dev);
 	if (dataLength == 0)
 		return;
-
 	dwGetData(dev, (uint8_t*)&rxPacket, dataLength);
+
+	dwTime_t arival = { .full=0 };
 	dwGetReceiveTimestamp(dev, &arival);
 	arival.full -= (ANTENNA_DELAY / 2);
 
 	uint8_t its_id = rxPacket.sourceAddress[0];
-	timestamps[its_id] = arival;
+	timestamps[its_id] = arival.low32;
 
 	if (my_id == ((its_id+1) % anchors_in_used))
 		broadcast_my_timestamps(dev);
+	else {
+		dwNewReceive(dev);
+		dwSetDefaults(dev);
+		dwStartReceive(dev);
+	}
 }
 
 static void tdoa_anchor_on_period(dwDevice_t *dev)
@@ -103,8 +113,21 @@ static void tdoa_anchor_on_period(dwDevice_t *dev)
 	if (timeout_cnt > TDOA_ANCHOR_LOOP_TIMEOUT) {
 		// A long time since last tx/rx, and a packet may be lost
 		timeout_cnt = 0;
+		error_cnt++;
 		LED_TUGGLE(2);
-		broadcast_my_timestamps(dev);
+		if (config.address == 0)
+			broadcast_my_timestamps(dev);
+		else if (error_cnt < 100) {
+			dwNewReceive(dev);
+			dwSetDefaults(dev);
+			dwStartReceive(dev);
+		} else {
+			/*
+			 * The DWM1000 cannot send anything after some recv failure.
+			 * So if this happened, we should reset the system.
+			 */
+			NVIC_SystemReset();
+		}
 	}
 }
 
