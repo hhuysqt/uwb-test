@@ -10,7 +10,7 @@
  *  Every DMA transfer is default to start at the top of dma_buffer,
  *  except in one case that SendBuffDMA() is called while DMA is still sending.
  */
-# define DMA_BUFFER_SIZE 2048
+# define DMA_BUFFER_SIZE 4096
 static unsigned char dma_buffer[DMA_BUFFER_SIZE];
 static int nr_get = 0, nr_sent = 0;
 
@@ -118,11 +118,31 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 		SendBuffStartDMA(sendbuff, strlen(sendbuff));
 		SetMode(UWB_TAG);
 		break;
+	// TDOA anchor
+	case 'B':
+		sprintf(sendbuff, "Set TDOA anchor mode\r\n");
+		SendBuffStartDMA(sendbuff, strlen(sendbuff));
+		SetMode(UWB_TDOA_ANCHOR);
+		break;
+	// TDOA tag
+	case 'C':
+		sprintf(sendbuff, "Set TDOA tag mode\r\n");
+		SendBuffStartDMA(sendbuff, strlen(sendbuff));
+		SetMode(UWB_TDOA_TAG);
+		break;
 	// Router mode
 	case 'R':
 		sprintf(sendbuff, "Set router mode\r\n");
 		SendBuffStartDMA(sendbuff, strlen(sendbuff));
 		SetMode(UWB_ROUTER);
+		break;
+
+	// reset system
+	case 'S':
+		sprintf(sendbuff, "Reset...\r\n\r\n");
+		SendBuffStartDMA(sendbuff, strlen(sendbuff));
+		mydelay(100);
+		NVIC_SystemReset();
 		break;
 
 	/*
@@ -143,10 +163,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	default: {
 		const char *helpmsg = "\r\nHelp\r\n"
 			"Set address   -- 0 ... 9, a ... z\r\n"
-			"Anchor mode   -- A\r\n"
-			"Tag    mode   -- T\r\n"
+			"TWR-TOA Anchor-- A\r\n"
+			"TWR-TOA Tag   -- T\r\n"
+			"TDOA Anchor   -- B\r\n"
+			"TDOA Tag      -- C\r\n"
 			"Router mode   -- R\r\n"
-			"Nr of anchors -- Ctrl+A ... Ctrl+J\r\n";
+			"Nr of anchors -- Ctrl+A ... Ctrl+J\r\n"
+			"---\r\n"
+			"Reset         -- S\r\n";
 		SendBuffStartDMA((void*)helpmsg, strlen(helpmsg));
 		break;
 	}
