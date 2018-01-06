@@ -9,10 +9,22 @@
 #include <mac.h>
 
 /*
+ * Configurations
+ */
+struct uwb_config {
+	unsigned short magic;
+	unsigned char mode;
+	unsigned char address;
+	unsigned char nr_anchor;
+	unsigned char checksum;
+} __attribute__((packed));
+extern struct uwb_config config;
+
+/*
  * Define the number of anchors *here*
  */
 #define NR_ANCHORS 3
-#define MAX_NR_ANCHORS 10
+#define MAX_NR_ANCHORS 8
 
 struct coordinate {
 	double x, y, z;
@@ -40,7 +52,7 @@ enum uwb_mode {
  * uwb callback functions
  */
 struct uwb_operation {
-	void (*init)(uint8_t anchor_address);
+	void (*init)(dwDevice_t *dev);
 	void (*on_tx)(dwDevice_t *dev);
 	void (*on_rx)(dwDevice_t *dev);
 	void (*on_timeout)(dwDevice_t *dev);
@@ -108,8 +120,11 @@ struct twr_full_data {
 /*
  * TDOA: hyperbolic localization
  * Tags calculate their coordinate only by listening to anchors' messages
- * Anchors send their timestamps one by one.
+ * Anchors broadcast their timestamps one by one.
  */
+
+void mydelay(int n);
+double LowPassFilter(double input, double last_output);
 
 /*
  * Initializing the low level radio handling

@@ -5,6 +5,7 @@
 #define MY_LED_H
 
 #include <main.h>
+#include <stm32f0xx_hal.h>
 
 #define LED_ON(NR)  HAL_GPIO_WritePin(LED##NR##_GPIO_Port, LED##NR##_Pin, 1)
 #define LED_OFF(NR) HAL_GPIO_WritePin(LED##NR##_GPIO_Port, LED##NR##_Pin, 0)

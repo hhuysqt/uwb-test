@@ -24,8 +24,8 @@ typedef struct packet_s {
 
     uint8_t seq;
     uint16_t pan;
-    uint8_t destAddress[8];
-    uint8_t sourceAddress[8];
+    uint8_t destAddress[2];
+    uint8_t sourceAddress[2];
 
     uint8_t payload[64];
 } __attribute__((packed)) packet_t;
@@ -35,9 +35,9 @@ typedef struct packet_s {
   packet.fcf_s.framePending = 0; \
   packet.fcf_s.ack = 0; \
   packet.fcf_s.ipan = 1; \
-  packet.fcf_s.destAddrMode = 3; \
+  packet.fcf_s.destAddrMode = 2; \
   packet.fcf_s.version = 1; \
-  packet.fcf_s.srcAddrMode = 3;
+  packet.fcf_s.srcAddrMode = 2;
 
 
 #define MAC802154_TYPE_BEACON 0
@@ -45,6 +45,6 @@ typedef struct packet_s {
 #define MAC802154_TYPE_ACK 2
 #define MAC802154_TYPE_CMD 3
 
-#define MAC802154_HEADER_LENGTH 21
+#define MAC802154_HEADER_LENGTH 9
 
 #endif
