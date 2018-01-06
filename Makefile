@@ -22,7 +22,7 @@ TARGET = test_m0
 # debug build?
 DEBUG = 1
 # optimization
-OPT = -O0
+OPT = -O3
 
 
 #######################################
@@ -59,6 +59,8 @@ Src/eeprom.c \
 Src/uwb_core.c \
 Src/uwb_tag.c \
 Src/uwb_anchor.c \
+Src/uwb_tdoa_tag.c \
+Src/uwb_tdoa_anchor.c \
 Src/uwb_router.c \
 Src/libdw1000.c \
 Src/libdw1000Spi.c \
