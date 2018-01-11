@@ -33,17 +33,14 @@ static const double iter_step = 0.1;
  * Then we calculate TDOA one by one between tag and anchor, thus the difference of 
  * distance between tag and anchor, and finally produce the tag's location.
  */
-// Timestamps from anchors. We need 2 timestamps for anchor mesurement
-static uint32_t last_timestamp[MAX_NR_ANCHORS][MAX_NR_ANCHORS];
-static uint32_t this_timestamp[MAX_NR_ANCHORS][MAX_NR_ANCHORS];
+
 // the tag's timestamp
 static uint32_t tag_timestamp[MAX_NR_ANCHORS];
 // Used to calibrate anchors' and tag's clock
 static double tag_round[MAX_NR_ANCHORS];
 static double timestamp_factor[MAX_NR_ANCHORS];
 // results
-static double anchor_distances[MAX_NR_ANCHORS][MAX_NR_ANCHORS];
-static struct coordinate anchor_coo[MAX_NR_ANCHORS], my_coo;
+static struct coordinate my_coo;
 static double tdoa_diff_distance[MAX_NR_ANCHORS];
 
 #  define TDOA_TAG_LOOP_TIMEOUT 5
@@ -56,6 +53,15 @@ static bool is_init_position = false;
  * Global temporary packet
  */
 static packet_t rxPacket;
+
+/*
+ * distance of two coordinates
+ */
+static double coo_distance(struct coordinate *c1, struct coordinate *c2)
+{
+	double dx = c1->x-c2->x, dy = c1->y-c2->y, dz = c1->z-c2->z;
+	return sqrt(dx*dx + dy*dy + dz*dz);
+}
 
 static void tdoa_tag_init(dwDevice_t *dev)
 {
@@ -77,7 +83,7 @@ static void tdoa_tag_on_rx(dwDevice_t *dev)
 	timeout_cnt = 0;
 
 	int dataLength = dwGetDataLength(dev);
-	if (dataLength != MAC802154_HEADER_LENGTH + 2 + 4*anchors_in_used)
+	if (dataLength != MAC802154_HEADER_LENGTH + 2 + 4*anchors_in_used + sizeof(struct coordinate_mm))
 		return;
 	dwGetData(dev, (uint8_t*)&rxPacket, dataLength);
 
@@ -85,48 +91,25 @@ static void tdoa_tag_on_rx(dwDevice_t *dev)
 	dwGetReceiveTimestamp(dev, &arival);
 
 	uint8_t its_id = rxPacket.sourceAddress[0];
-
+	// Its timestamps
 	memcpy(&last_timestamp[its_id], &this_timestamp[its_id], 4*anchors_in_used);
 	memcpy(&this_timestamp[its_id], &rxPacket.payload[2], 4*anchors_in_used);
+	// Its coordinate
+	struct coordinate_mm *coomm = (struct coordinate_mm*)&rxPacket.payload[2+4*anchors_in_used];
+	double tmpx = 0.001*coomm->x, tmpy = 0.001*coomm->y, tmpz = 0.001*coomm->z;
+	anchor_coo[its_id].x = LowPassFilter(tmpx, anchor_coo[its_id].x);
+	anchor_coo[its_id].y = LowPassFilter(tmpy, anchor_coo[its_id].y);
+	anchor_coo[its_id].z = LowPassFilter(tmpz, anchor_coo[its_id].z);
+
 	// calibration
 	double anchor_round = this_timestamp[its_id][its_id] - last_timestamp[its_id][its_id];
-	timestamp_factor[its_id] = tag_round[its_id] / anchor_round;
+	double tmpfac = tag_round[its_id] / anchor_round;
+	timestamp_factor[its_id] = tmpfac;
 
 	if (recv_cnt < 2*anchors_in_used){
 		// Not enough valid data
 		recv_cnt++;
 	} else {
-		/*
-		 * Calculate the tof between anchors.
-		 * this_timestamp[its_id] for T-reply's,
-		 * last_timestamp[] for T-round's
-		 */
-		for (int i = 0; i < anchors_in_used; i++)
-		if (i != its_id) {
-			double tround1 = (last_timestamp[its_id][i] - last_timestamp[its_id][its_id])*timestamp_factor[its_id],
-			       treply1 = (this_timestamp[i][i]      - last_timestamp[i][its_id])     *timestamp_factor[i],
-			       treply2 = (this_timestamp[its_id][its_id] - last_timestamp[its_id][i])*timestamp_factor[its_id],
-			       tround2 = (this_timestamp[i][its_id]      - this_timestamp[i][i])     *timestamp_factor[i];
-			// Symmetric formula
-			//double tprop_ctn = (tround1 + tround2 - treply1 - treply2) / 4;
-			// Asymmetric formula
-			double tprop_ctn = ((tround1*tround2) - (treply1*treply2)) /
-			                   (tround1 + tround2 + treply1 + treply2);
-			double tprop = tprop_ctn/tsfreq;
-			double cur_distance = C * tprop;
-			if (cur_distance > 20 || cur_distance < 0) {
-				// Invalid distance
-				//recv_cnt = 0;
-				LED_TUGGLE(2);
-			} else if (!isnan(cur_distance)) {
-				if (its_id < i)
-					anchor_distances[its_id][i] = LowPassFilter(cur_distance, anchor_distances[its_id][i]);
-				else
-					anchor_distances[i][its_id] = LowPassFilter(cur_distance, anchor_distances[i][its_id]);
-				valid_anc_mes++;
-			}
-		}
-
 		/*
 		 * Calculate the TDOA of tag and two anchors: 0 and its_id
 		 */
@@ -136,7 +119,7 @@ static void tdoa_tag_on_rx(dwDevice_t *dev)
 			double trx = tag_timestamp[0] - tag_timestamp[its_id];
 			double tdoa = tround - trx;
 			double tprop = tdoa/tsfreq;
-			double diff_dist = C * tprop - anchor_distances[0][its_id];
+			double diff_dist = C * tprop - coo_distance(&anchor_coo[0], &anchor_coo[its_id]);
 			diff_dist = -diff_dist;
 			if (diff_dist > -22.0 && diff_dist < 22.0)
 				tdoa_diff_distance[its_id] = LowPassFilter(diff_dist, tdoa_diff_distance[its_id]);
@@ -147,7 +130,7 @@ static void tdoa_tag_on_rx(dwDevice_t *dev)
 				double trx = tag_timestamp[i] - tag_timestamp[0];
 				double tdoa = tround - trx;
 				double tprop = tdoa/tsfreq;
-				double diff_dist = C * tprop - anchor_distances[0][i];
+				double diff_dist = C * tprop - coo_distance(&anchor_coo[0], &anchor_coo[i]);
 				if (diff_dist > -22.0 && diff_dist < 22.0)
 					tdoa_diff_distance[i] = LowPassFilter(diff_dist, tdoa_diff_distance[i]);
 			}
@@ -155,86 +138,12 @@ static void tdoa_tag_on_rx(dwDevice_t *dev)
 	}
 	tag_round[its_id] = arival.low32 - tag_timestamp[its_id];
 	tag_timestamp[its_id] = arival.low32;
+	valid_anc_mes++;
 
 	LED_TUGGLE(3);
 	dwNewReceive(dev);
 	dwSetDefaults(dev);
 	dwStartReceive(dev);
-}
-
-static double coo_distance(struct coordinate *c1, struct coordinate *c2)
-{
-	double dx = c1->x-c2->x, dy = c1->y-c2->y, dz = c1->z-c2->z;
-	return sqrt(dx*dx + dy*dy + dz*dz);
-}
-
-/*
- * The first 3 anchors are pre-defined
- */
-static int initiate_first_3_anchors(void)
-{
-	double a,b,c,x, tmp;
-	// 0
-	anchor_coo[0].x = anchor_coo[0].y = anchor_coo[0].z = 0.0;
-	// 1
-	anchor_coo[1].x = anchor_distances[0][1], anchor_coo[1].y = anchor_coo[1].z = 0.0;
-	// 2
-	a = anchor_distances[1][2], b = anchor_distances[0][2], c = anchor_distances[0][1];
-	anchor_coo[2].x = x = (b*b + c*c - a*a) / 2 / c;
-	tmp = b*b - x*x;
-	if (tmp < 0)
-		return -1;
-	anchor_coo[2].y = sqrt(tmp);
-	anchor_coo[2].z = 0.0;
-	return 0;
-}
-/*
- * Calculate the coordinate based on the first 3 anchors.
- * z is positive
- */
-static int initiate_anchor_positive_coo(int n)
-{
-	double a,b,c,x,y,z, tmp;
-	a = anchor_distances[0][n], b = anchor_distances[1][n], c = anchor_distances[2][n];
-	double x1 = anchor_coo[1].x, x2 = anchor_coo[2].x, y2 = anchor_coo[2].y;
-	x = (x1*x1 + a*a - b*b) / 2 / x1;
-	y = (a*a + x2*x2 + y2*y2 - 2*x2*x - c*c) / 2 / y2;
-	if (x*x > 600 || y*y > 600)
-		return -1;
-	anchor_coo[n].x = x, anchor_coo[n].y = y;
-	tmp = a*a - x*x - y*y;
-	if(tmp < 0) 
-		return -1;
-	z = sqrt(tmp);
-	anchor_coo[n].z = z;
-	return 0;	
-}
-
-/*
- * Calculate the first 4 anchors' position, and
- * the rest based on these 4 anchors.
- */
-static void initiate_anchor_position(void)
-{
-	is_init_position = true;
-	if (initiate_first_3_anchors() < 0)
-		return;
-	if (anchors_in_used < 4)
-		return;
-	// 3
-	if(initiate_anchor_positive_coo(3) < 0) 
-		return;
-	// The rest anchors
-	for (int i = 4; i < anchors_in_used; i++) {
-		if (initiate_anchor_positive_coo(i) < 0) {
-			is_init_position = false;
-			continue;
-		}
-		double diff = coo_distance(&anchor_coo[3], &anchor_coo[i]) - anchor_distances[3][i];
-		const double max_diff = 0.6;
-		if (diff > max_diff || diff < -max_diff)
-			anchor_coo[i].z = -anchor_coo[i].z;
-	}
 }
 
 /*
@@ -255,86 +164,90 @@ static void initiate_tag_position(void)
 }
 
 /*
- * Gradient decent iterations
+ * Main calculation
  */
-static void calculate_anchor(void)
-{
-	initiate_first_3_anchors();
-	if (anchors_in_used < 4)
-		return;
-	initiate_anchor_positive_coo(3);
-
-#if 1
-	struct coordinate adj[MAX_NR_ANCHORS] = { 0 };
-	// for each edge
-	for (int i = 0; i < anchors_in_used-1; i++) {
-		for (int j = i+1; j < anchors_in_used; j++) {
-			double dx = anchor_coo[i].x - anchor_coo[j].x,
-			       dy = anchor_coo[i].y - anchor_coo[j].y,
-			       dz = anchor_coo[i].z - anchor_coo[j].z;
-			double curr_dist = sqrt(dx*dx + dy*dy + dz*dz);
-			double real_dist = anchor_distances[i][j];
-			double difference = curr_dist - real_dist;
-			double adj_factor = iter_step * difference / curr_dist;
-			dx *= adj_factor, dy *= adj_factor, dz *= adj_factor;
-			if (i > 2)
-				adj[i].x -= dx, adj[i].y -= dy, adj[i].z -= dz;
-			if (j > 2)
-				adj[j].x += dx, adj[j].y += dy, adj[j].z += dz;
-		}
-	}
-	// for each node
-	for (int i = 0; i < anchors_in_used; i++) {
-		anchor_coo[i].x += adj[i].x;
-		anchor_coo[i].y += adj[i].y;
-		anchor_coo[i].z += adj[i].z;
-	}
-#endif
-}
 static void calculate_tag(void)
 {
+	struct coordinate tmp = {0};
+	// for each TDOA
+	for (int i = 1; i < anchors_in_used; i++) {
+		// gradient
+		double dx0 = my_coo.x - anchor_coo[0].x, dxi = my_coo.x - anchor_coo[i].x,
+		       dy0 = my_coo.x - anchor_coo[0].y, dyi = my_coo.y - anchor_coo[i].y,
+		       dz0 = my_coo.x - anchor_coo[0].z, dzi = my_coo.z - anchor_coo[i].z;
+		double dist0 = sqrt(dx0*dx0 + dy0*dy0 + dz0*dz0),
+		       disti = sqrt(dxi*dxi + dyi*dyi + dzi*dzi);
+		if (dist0 < 0.001) dist0 = 0.001;
+		if (disti < 0.001) disti = 0.001;
+		double gx = dx0/dist0 - dxi/disti,
+		       gy = dy0/dist0 - dyi/disti,
+		       gz = dz0/dist0 - dzi/disti;
+		double abs_g = sqrt(gx*gx + gy*gy + gz*gz);
+		if (abs_g < 0.001) abs_g = 0.001;
+		// difference of TDOA
+		double curr_tdoa = dist0 - disti,
+		       real_tdoa = tdoa_diff_distance[i];
+		double adj_factor = iter_step * (real_tdoa - curr_tdoa) / abs_g;
+
+		gx *= adj_factor, gy *= adj_factor, gz *= adj_factor;
+		tmp.x += gx, tmp.y += gy, tmp.z += gz;
+	}
+	my_coo.x += tmp.x;
+	my_coo.y += tmp.y;
+	my_coo.z += tmp.z;
 }
 
 static void tdoa_tag_on_period(dwDevice_t *dev)
 {
 	static int period_cnt = 0;
+	
+	if (is_init_position) {
+		calculate_tag();
+	} else if (valid_anc_mes > 2000) {
+		initiate_tag_position();
+		is_init_position = true;
+	}
+
 	period_cnt++;
 	if (period_cnt >= 10) {
 		period_cnt = 0;
-		if (is_init_position) {
-			calculate_anchor();
-//			initiate_anchor_position();
-			calculate_tag();
-		} else if (valid_anc_mes > 100) {
-			initiate_anchor_position();
-			initiate_tag_position();
-		}
 
 		LED_TUGGLE(1);
 
+//#define PRINT_DIFF_DISTANCE
 //#define PRINT_ANCHOR_MEASUREMENT
 #define PRINT_ANCHOR_COORDINATE
 		char buff[300];
 		int i, cnt = 0;
 
 #ifdef PRINT_DIFF_DISTANCE
-		for (i = 0; i < anchors_in_used-1; i++) {
-			int dist = tdoa_diff_distance[i+1]*1000;
-			sprintf(&buff[i*6], "%5d,", dist);
+		for (i = 1; i < anchors_in_used; i++) {
+			int dist = tdoa_diff_distance[i]*1000;
+			sprintf(&buff[cnt], "%5d,", dist);
+			cnt += 6;
 		}
-		buff[i*6] = '\r';
-		buff[i*6+1] = '\n';
-		while(SendBuffStartDMA(buff, i*6+2) == SEND_RETRY);
+		int x,y,z;
+		x = my_coo.x*1000, y = my_coo.y*1000, z = my_coo.z*1000;
+		sprintf(&buff[cnt], "|%5d,%5d,%5d", x,y,z);
+		cnt += 18;
+		buff[cnt++] = '\r';
+		buff[cnt++] = '\n';
+		while(SendBuffStartDMA(buff, cnt) == SEND_RETRY);
 #endif
 #ifdef PRINT_ANCHOR_COORDINATE
 		buff[0] = 's';
 		buff[1] = ':';
 		cnt = 2;
+		int x,y,z;
 		for (i = 0; i < anchors_in_used; i++) {
-			int x = anchor_coo[i].x*1000, y = anchor_coo[i].y*1000, z = anchor_coo[i].z*1000;
+			x = anchor_coo[i].x*1000, y = anchor_coo[i].y*1000, z = anchor_coo[i].z*1000;
 			sprintf(&buff[cnt], "%5d,%5d,%5d|", x,y,z);
 			cnt += 18;
 		}
+		// And finally my coordinate
+		x = my_coo.x*1000, y = my_coo.y*1000, z = my_coo.z*1000;
+		sprintf(&buff[cnt], "%5d,%5d,%5d|", x,y,z);
+		cnt += 18;
 		buff[cnt++] = '\r';
 		buff[cnt++] = '\n';
 		while(SendBuffStartDMA(buff, cnt) == SEND_RETRY);
