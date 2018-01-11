@@ -33,6 +33,12 @@ struct coordinate_mm {
 	int16_t x, y, z;
 };
 
+// Timestamps from anchors. We need 2 timestamps for anchor mesurement
+extern uint32_t last_timestamp[MAX_NR_ANCHORS][MAX_NR_ANCHORS];
+extern uint32_t this_timestamp[MAX_NR_ANCHORS][MAX_NR_ANCHORS];
+// Both anchor and tag need every anchor's coordinate
+extern struct coordinate anchor_coo[MAX_NR_ANCHORS];
+
 /*
  * Different uwb mode
  */
