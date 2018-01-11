@@ -26,7 +26,7 @@ static struct uwb_operation *curr_uwb_ops = &uwb_anchor_ops;
 void mydelay(int n)
 {
 	while(n--){
-		volatile int cnt = 8000;
+		volatile int cnt = 4000;
 		while(cnt--);
 	}
 }
