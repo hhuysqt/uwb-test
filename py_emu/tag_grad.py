@@ -36,15 +36,15 @@ def inte_grad(p1, p2, p):
 	return g
 
 # anchors' location
-p1 = coordinate(-2.0,	0,	0)
-p2 = coordinate(2.0, 	-0.31,	0)
-p3 = coordinate(0.73, 	5,	0)
-p4 = coordinate(0, 	0,	5)
+p1 = coordinate(0,	0,	0)
+p2 = coordinate(2.0, 	0,	0)
+p3 = coordinate(1, 	1.5,	0)
+p4 = coordinate(1, 	0,	2)
 
 # target's location
-pt = coordinate(0,	1.17,	1)
+pt = coordinate(1,	0.7,	1)
 d = [dist(pt,p1), dist(pt,p2), dist(pt,p3), dist(pt,p4)]
-dd = [d[0]-d[1], d[0]-d[2], d[0]-d[3]]
+dd = [d[1]-d[0], d[1]-d[2], d[1]-d[3]]
 # start point
 ps = coordinate(-2.0,	-3,	0)
 
@@ -56,16 +56,16 @@ for i in range(500):
 	y.append(ps.y)
 	z.append(ps.z)
 	sd = [dist(ps,p1), dist(ps,p2), dist(ps,p3), dist(ps,p4)]
-	dsd = [sd[0]-sd[1], sd[0]-sd[2], sd[0]-sd[3]]
+	dsd = [sd[1]-sd[0], sd[1]-sd[2], sd[1]-sd[3]]
 	delta = [dd[0]-dsd[0], dd[1]-dsd[1], dd[2]-dsd[2]]
 	e = delta[0]*delta[0] + delta[1]*delta[1] + delta[2]*delta[2]
 	if e < 0.0002:
 		print i, ' iterations'
 		break
 	# grad
-	g1 = inte_grad(p1, p2, ps)*step*delta[0]
-	g2 = inte_grad(p1, p3, ps)*step*delta[1]
-	g3 = inte_grad(p1, p4, ps)*step*delta[2]
+	g1 = inte_grad(p2, p1, ps)*step*delta[0]
+	g2 = inte_grad(p2, p3, ps)*step*delta[1]
+	g3 = inte_grad(p2, p4, ps)*step*delta[2]
 	ps = ps + g1 + g2 + g3
 
 print ps.x, ps.y, ps.z

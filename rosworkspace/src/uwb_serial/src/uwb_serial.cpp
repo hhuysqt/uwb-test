@@ -276,7 +276,7 @@ int main( int argc, char** argv )
       my_text(std::string(buff), x[i], y[i], z[i]+0.5, 0.2, RED, 128+i);
     }
     // and finally the tag
-    scanf("%d,%d,%d|", &xmm,&ymm,&zmm);
+    scanf("%d,%d,%d", &xmm,&ymm,&zmm);
     x[i] = 0.001*xmm, y[i] = 0.001*ymm, z[i] = 0.001*zmm;
     printf("%2.3f,%2.3f,%2.3f\r\n", x[i],y[i],z[i]);
     my_plot(x[i], y[i], z[i], CYAN, 64+i);

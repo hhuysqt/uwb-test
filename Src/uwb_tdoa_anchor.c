@@ -91,8 +91,10 @@ static void tdoa_anchor_init(dwDevice_t *dev)
 	txPacket.pan = 0xbccf;
 
 	// Init anchor coordinate
-	if (my_id > 2)
-		anchor_coo[my_id].x = anchor_coo[my_id].y = anchor_coo[my_id].z = 0.1;
+	if (my_id > 2) {
+		anchor_coo[my_id].x = anchor_coo[my_id].y = 0.1;
+		anchor_coo[my_id].z = 2.0;
+	}
 }
 
 /*
@@ -190,8 +192,6 @@ static void tdoa_anchor_on_rx(dwDevice_t *dev)
 		anchor_coo[my_id].x -= adj.x;
 		anchor_coo[my_id].y -= adj.y;
 		anchor_coo[my_id].z -= adj.z;
-		if (my_id == 3 && anchor_coo[3].z < -0.15)
-			anchor_coo[3].z = -anchor_coo[3].z;
 		break;
 	}
 	}

@@ -24,7 +24,7 @@ static const double tsfreq = 499.2e6 * 128;  // Timestamp counter frequency
 #define ANTENNA_OFFSET 154.6   // In meter
 #define ANTENNA_DELAY  (ANTENNA_OFFSET*499.2e6*128)/299792458.0 // In radio tick
 // gradient decent
-static const double iter_step = 0.1;
+static const double iter_step = 0.45;
 
 /*
  * Timestamps of the anchors
@@ -41,7 +41,7 @@ static double tag_round[MAX_NR_ANCHORS];
 static double timestamp_factor[MAX_NR_ANCHORS];
 // results
 static struct coordinate my_coo;
-static double tdoa_diff_distance[MAX_NR_ANCHORS];
+static double tdoa_diff_distance[MAX_NR_ANCHORS][MAX_NR_ANCHORS];
 
 #  define TDOA_TAG_LOOP_TIMEOUT 5
 static int timeout_cnt = 0;
@@ -111,29 +111,19 @@ static void tdoa_tag_on_rx(dwDevice_t *dev)
 		recv_cnt++;
 	} else {
 		/*
-		 * Calculate the TDOA of tag and two anchors: 0 and its_id
+		 * Calculate the TDOA on this anchor
 		 */
-		if (its_id != 0) {
-			double tround = this_timestamp[its_id][0] - this_timestamp[its_id][its_id];
+		for (int i = 0; i < anchors_in_used; i++) {
+			if (i == its_id)
+				continue;
+			double tround = this_timestamp[its_id][i] - this_timestamp[its_id][its_id];
 			tround *= timestamp_factor[its_id];
-			double trx = tag_timestamp[0] - tag_timestamp[its_id];
+			double trx = tag_timestamp[i] - tag_timestamp[its_id];
 			double tdoa = tround - trx;
 			double tprop = tdoa/tsfreq;
-			double diff_dist = C * tprop - coo_distance(&anchor_coo[0], &anchor_coo[its_id]);
-			diff_dist = -diff_dist;
+			double diff_dist = C * tprop - coo_distance(&anchor_coo[its_id], &anchor_coo[i]);
 			if (diff_dist > -22.0 && diff_dist < 22.0)
-				tdoa_diff_distance[its_id] = LowPassFilter(diff_dist, tdoa_diff_distance[its_id]);
-		} else {
-			for (int i = 1; i < anchors_in_used; i++) {
-				double tround = this_timestamp[0][i] - this_timestamp[0][0];
-				tround *= timestamp_factor[0];
-				double trx = tag_timestamp[i] - tag_timestamp[0];
-				double tdoa = tround - trx;
-				double tprop = tdoa/tsfreq;
-				double diff_dist = C * tprop - coo_distance(&anchor_coo[0], &anchor_coo[i]);
-				if (diff_dist > -22.0 && diff_dist < 22.0)
-					tdoa_diff_distance[i] = LowPassFilter(diff_dist, tdoa_diff_distance[i]);
-			}
+				tdoa_diff_distance[its_id][i] = LowPassFilter(diff_dist, tdoa_diff_distance[its_id][i]);
 		}
 	}
 	tag_round[its_id] = arival.low32 - tag_timestamp[its_id];
@@ -168,33 +158,46 @@ static void initiate_tag_position(void)
  */
 static void calculate_tag(void)
 {
-	struct coordinate tmp = {0};
+	// Pre-calculate dx, dy, dz, and dist
+	double dx[MAX_NR_ANCHORS], dy[MAX_NR_ANCHORS], dz[MAX_NR_ANCHORS],
+	       dist[MAX_NR_ANCHORS];
+	for (int i = 0; i < anchors_in_used; i++) {
+		dx[i] = my_coo.x - anchor_coo[i].x;
+		dy[i] = my_coo.y - anchor_coo[i].y;
+		dz[i] = my_coo.z - anchor_coo[i].z;
+		double tmpd = sqrt(dx[i]*dx[i] + dy[i]*dy[i] + dz[i]*dz[i]);
+		if (tmpd < 0.001) dist[i] = 0.001;
+		else dist[i] = tmpd;
+	}
 	// for each TDOA
-	for (int i = 1; i < anchors_in_used; i++) {
-		// gradient
-		double dx0 = my_coo.x - anchor_coo[0].x, dxi = my_coo.x - anchor_coo[i].x,
-		       dy0 = my_coo.x - anchor_coo[0].y, dyi = my_coo.y - anchor_coo[i].y,
-		       dz0 = my_coo.x - anchor_coo[0].z, dzi = my_coo.z - anchor_coo[i].z;
-		double dist0 = sqrt(dx0*dx0 + dy0*dy0 + dz0*dz0),
-		       disti = sqrt(dxi*dxi + dyi*dyi + dzi*dzi);
-		if (dist0 < 0.001) dist0 = 0.001;
-		if (disti < 0.001) disti = 0.001;
-		double gx = dx0/dist0 - dxi/disti,
-		       gy = dy0/dist0 - dyi/disti,
-		       gz = dz0/dist0 - dzi/disti;
-		double abs_g = sqrt(gx*gx + gy*gy + gz*gz);
-		if (abs_g < 0.001) abs_g = 0.001;
-		// difference of TDOA
-		double curr_tdoa = dist0 - disti,
-		       real_tdoa = tdoa_diff_distance[i];
-		double adj_factor = iter_step * (real_tdoa - curr_tdoa) / abs_g;
+	struct coordinate tmp = {0};
+	for (int i = 0; i < anchors_in_used; i += 2) {
+		for (int j = 0; j < anchors_in_used; j++) {
+			if (i == j)
+				continue;
+			// gradient
+			double gx = dx[i]/dist[i] - dx[j]/dist[j],
+			       gy = dy[i]/dist[i] - dy[j]/dist[j],
+			       gz = dz[i]/dist[i] - dz[j]/dist[j];
+			double abs_g = sqrt(gx*gx + gy*gy + gz*gz);
+			if (abs_g < 0.001) abs_g = 0.001;
+			// difference of TDOA
+			double curr_tdoa = dist[i] - dist[j],
+			       real_tdoa = tdoa_diff_distance[i][j];
+			double adj_factor = iter_step / anchors_in_used * (real_tdoa - curr_tdoa) / abs_g;
 
-		gx *= adj_factor, gy *= adj_factor, gz *= adj_factor;
-		tmp.x += gx, tmp.y += gy, tmp.z += gz;
+			gx *= adj_factor, gy *= adj_factor, gz *= adj_factor;
+			tmp.x += gx, tmp.y += gy, tmp.z += gz;
+		}
 	}
 	my_coo.x += tmp.x;
 	my_coo.y += tmp.y;
 	my_coo.z += tmp.z;
+	#define MAX_TAG_COO 7
+	if (my_coo.x > MAX_TAG_COO || my_coo.x < -MAX_TAG_COO ||
+		my_coo.y > MAX_TAG_COO || my_coo.y < -MAX_TAG_COO ||
+		my_coo.z > MAX_TAG_COO || my_coo.z < -MAX_TAG_COO)
+		initiate_tag_position();
 }
 
 static void tdoa_tag_on_period(dwDevice_t *dev)
@@ -203,38 +206,41 @@ static void tdoa_tag_on_period(dwDevice_t *dev)
 	
 	if (is_init_position) {
 		calculate_tag();
-	} else if (valid_anc_mes > 2000) {
+	} else if (valid_anc_mes > 1000) {
 		initiate_tag_position();
 		is_init_position = true;
 	}
 
 	period_cnt++;
-	if (period_cnt >= 10) {
+	if (period_cnt >= 2) {
 		period_cnt = 0;
 
 		LED_TUGGLE(1);
 
 //#define PRINT_DIFF_DISTANCE
-//#define PRINT_ANCHOR_MEASUREMENT
-#define PRINT_ANCHOR_COORDINATE
+#define PRINT_ANCHOR_TAG
+//#define PRINT_TAG
 		char buff[300];
 		int i, cnt = 0;
 
 #ifdef PRINT_DIFF_DISTANCE
-		for (i = 1; i < anchors_in_used; i++) {
-			int dist = tdoa_diff_distance[i]*1000;
-			sprintf(&buff[cnt], "%5d,", dist);
-			cnt += 6;
+		for (int j = 0; j < 4; j++) {
+			for (i = 0; i < anchors_in_used; i++) {
+				int dist = tdoa_diff_distance[j][i]*1000;
+				sprintf(&buff[cnt], "%5d,", dist);
+				cnt += 6;
+			}
+			buff[cnt++] = '|';
 		}
 		int x,y,z;
 		x = my_coo.x*1000, y = my_coo.y*1000, z = my_coo.z*1000;
-		sprintf(&buff[cnt], "|%5d,%5d,%5d", x,y,z);
-		cnt += 18;
+		sprintf(&buff[cnt], "%5d,%5d,%5d", x,y,z);
+		cnt += 17;
 		buff[cnt++] = '\r';
 		buff[cnt++] = '\n';
 		while(SendBuffStartDMA(buff, cnt) == SEND_RETRY);
 #endif
-#ifdef PRINT_ANCHOR_COORDINATE
+#ifdef PRINT_ANCHOR_TAG
 		buff[0] = 's';
 		buff[1] = ':';
 		cnt = 2;
@@ -250,18 +256,14 @@ static void tdoa_tag_on_period(dwDevice_t *dev)
 		cnt += 18;
 		buff[cnt++] = '\r';
 		buff[cnt++] = '\n';
-		while(SendBuffStartDMA(buff, cnt) == SEND_RETRY);
+		SendBuffStartDMA(buff, cnt);
 #endif
-#ifdef PRINT_ANCHOR_MEASUREMENT
-		for (i = 0; i < anchors_in_used-1; i++)
-			for (int j = i+1; j < anchors_in_used; j++) {
-				int dist = anchor_distances[i][j]*1000;
-				sprintf(&buff[cnt], "%5d ", dist);
-				cnt += 6;
-			}
-		buff[cnt++] = '\r';
-		buff[cnt++] = '\n';
-		while(SendBuffStartDMA(buff, cnt) == SEND_RETRY);
+#ifdef PRINT_TAG
+		if (is_init_position) {
+			int x = my_coo.x*1000, y = my_coo.y*1000, z = my_coo.z*1000;
+			sprintf(buff, "s:%5d,%5d,%5d\r\n", x,y,z);
+			while(SendBuffStartDMA(buff, 21) == SEND_RETRY);
+		}
 #endif
 	}
 
